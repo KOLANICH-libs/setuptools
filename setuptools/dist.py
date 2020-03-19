@@ -775,6 +775,39 @@ class Distribution(_Distribution):
 
     optsFinalizationRemap = None  # set later
 
+    def isFinHookFailureFatal(self, ep, fdohac):
+        """Returns either a bool, or None. The semantics is following
+        None: don't call the hook
+        All other options call the hook.
+        True: If an error occurs, fail
+        False: If an error occurs, warning
+        """
+        if isinstance(ep.metadata, Mapping):
+            only = ep.metadata.get('only', None)
+            fail = ep.metadata.get('fail', None)
+            if only is not None:
+                if isinstance(only, str):
+                    if only == '*':
+                        only = tuple(self.shouldCallFinHookCheckers)
+                    else:
+                        only = (only,)
+
+                elif isinstance(only, bool):
+                    if fail is None:
+                        fail = True
+                    return fail
+
+                if fail is None:
+                    fail = False
+
+                for cand in only:
+                    checker = self.shouldCallFinHookCheckers.get(cand, None)
+                    if checker:
+                        if checker(self, fdohac, ep):
+                            return fail
+            return None
+        return False
+
     def finalize_options(self):
         """
         Allow plugins to apply arbitrary operations to the
@@ -815,6 +848,10 @@ class Distribution(_Distribution):
         eps = pkg_resources.iter_entry_points(hook_key)
 
         for ep in sorted(eps, key=by_order):
+            isFatal = self.isFinHookFailureFatal(ep, fdohac)
+            if isFatal is None:
+                continue
+
             try:
                 f = ep.load()
             except Exception as ex:
@@ -833,7 +870,13 @@ class Distribution(_Distribution):
                 )
                 continue
 
-            f(*args)
+            try:
+                f(*args)
+            except BaseException as ex:
+                if not isFatal:
+                    warnings.warn("Error when executing entry point:" + str(ex))
+                    continue
+                raise
 
     @staticmethod
     def _finalize_setup_keywords(dist):
