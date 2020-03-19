@@ -794,7 +794,11 @@ class Distribution(_Distribution):
         group = 'setuptools.finalize_distribution_options'
 
         def by_order(hook):
-            return getattr(hook, 'order', 0)
+            if isinstance(hook.metadata, (int, float)):
+                return hook.metadata
+            elif isinstance(hook.metadata, Mapping):
+                return hook.metadata.get('order', 0)
+            return 0
 
         fdohac = FinalizeDistributionOptionsHookArgsCache()
 
