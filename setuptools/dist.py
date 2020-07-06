@@ -783,6 +783,7 @@ class Distribution(_Distribution):
             pkg_resources.working_set.add(dist, replace=True)
         return resolved_dists
 
+    optsFinalizationRemap = None  # set later
     shouldCallFinHookCheckers = {
         'dist': lambda dist, fdohac, ep: hasattr(dist, ep.name),
         'toml': lambda dist, fdohac, ep: bool(fdohac.pyProjectToml) and ep.name in fdohac.pyProjectToml,
@@ -836,6 +837,23 @@ class Distribution(_Distribution):
 
         fdohac = FinalizeDistributionOptionsHookArgsCache()
 
+        def constructArgsForAFunc(f, ep, fdohac):
+            if sys.version_info.major >= 3:
+                p = inspect.getfullargspec(f).args
+            else:
+                p = inspect.getargspec(f)[0]
+
+            if len(p) == 1:
+                firstParam = p[0]
+                if firstParam not in self.optsFinalizationRemap:
+                    return [self]
+
+            args = []
+            for parN in p:
+                a = self.optsFinalizationRemap[parN](self, ep, fdohac, parN)
+                args.append(a)
+            return args
+
         eps = []
         for ep in  pkg_resources.iter_entry_points(group):
             try:
@@ -850,7 +868,16 @@ class Distribution(_Distribution):
 
         for ep, f in sorted(eps, key=by_order):
             try:
-                f(self)
+                args = constructArgsForAFunc(f, ep, fdohac)
+            except Exception as ex:
+                warnings.warn(
+                    repr(ep) + " is incompatible to the current"
+                    " version of setuptools: " + str(ex)
+                )
+                continue
+
+            try:
+                f(*args)
             except BaseException as ex:
                 if not isFatal:
                     warnings.warn("Error when executing entry point:" + str(ex))
