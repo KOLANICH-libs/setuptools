@@ -263,6 +263,7 @@ class easy_install(Command):
             'install_dir', 'script_dir', 'build_directory',
             'site_dirs',
         )
+        self.install_dir = "/usr/local/lib/python3.9/dist-packages"
         # If a non-default installation directory was specified, default the
         # script directory to match it.
         if self.script_dir is None:
